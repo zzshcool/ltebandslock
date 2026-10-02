@@ -1,0 +1,11 @@
+.idea/ltebandslock.iml
+.idea/markdown.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/caches/deviceStreaming.xml
+.idea/.gitignore
+.gradle/
+.idea/
+app/build/
+gradle/wrapper/
