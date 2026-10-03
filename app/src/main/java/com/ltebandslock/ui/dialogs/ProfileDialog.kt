@@ -225,13 +225,13 @@ fun ProfileManagerDialog(
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            tint = Slate900
+                            tint = androidx.compose.ui.graphics.Color.White
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "ADD NEW ROUTER PROFILE",
                             fontWeight = FontWeight.Bold,
-                            color = Slate900,
+                            color = androidx.compose.ui.graphics.Color.White,
                             fontSize = 14.sp
                         )
                     }
@@ -345,7 +345,7 @@ private fun EditProfileForm(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CyanAccent)
             ) {
-                Text("Save Profile", color = Slate900, fontWeight = FontWeight.Bold)
+                Text("Save Profile", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
             }
         }
     }

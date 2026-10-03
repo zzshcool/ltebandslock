@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">LTE Manager Pro</string>
+    <string name="widget_desc">即時顯示 LTE 路由器頻段、訊號與網路狀態</string>
 </resources>
+

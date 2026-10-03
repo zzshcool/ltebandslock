@@ -2,11 +2,16 @@ package com.ltebandslock.data.api
 
 import android.util.Base64
 import android.util.Log
+import com.ltebandslock.data.model.AntennaMode
+import com.ltebandslock.data.model.AntennaStatus
+import com.ltebandslock.data.model.ConnectedDevice
 import com.ltebandslock.data.model.DeviceInfo
 import com.ltebandslock.data.model.LteBandInfo
 import com.ltebandslock.data.model.LteBands
 import com.ltebandslock.data.model.RouterProfile
 import com.ltebandslock.data.model.SignalInfo
+import com.ltebandslock.data.model.SmsCount
+import com.ltebandslock.data.model.SmsMessage
 import com.ltebandslock.data.model.TrafficInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -300,6 +305,23 @@ class HuaweiRouterApi {
                 primaryBand
             }
 
+            // Parse Signal Bars (0..5) from router hardware status or calculate from RSRP/SINR
+            val rawSignalIcon = parseXmlTag(statusXml, "SignalIcon").toIntOrNull()
+                ?: parseXmlTag(statusXml, "signalicon").toIntOrNull()
+                ?: parseXmlTag(statusXml, "SignalStrength").toIntOrNull()
+                ?: parseXmlTag(statusXml, "signalstrength").toIntOrNull()
+
+            val calculatedBars = when {
+                rsrp == null -> 0
+                rsrp >= -85 && (sinr == null || sinr >= 10) -> 5
+                rsrp >= -95 && (sinr == null || sinr >= 5) -> 4
+                rsrp >= -105 && (sinr == null || sinr >= 0) -> 3
+                rsrp >= -115 -> 2
+                rsrp >= -125 -> 1
+                else -> 0
+            }
+            val signalBars = (rawSignalIcon ?: calculatedBars).coerceIn(0, 5)
+
             Result.success(
                 SignalInfo(
                     rsrp = rsrp,
@@ -313,7 +335,8 @@ class HuaweiRouterApi {
                     caCount = caCount,
                     caLabel = caLabel,
                     pci = pci.ifEmpty { "-" },
-                    earfcn = earfcn.ifEmpty { "-" }
+                    earfcn = earfcn.ifEmpty { "-" },
+                    signalBars = signalBars
                 )
             )
         } catch (e: Exception) {
@@ -347,10 +370,16 @@ class HuaweiRouterApi {
             val carrier = parseXmlTag(plmnXml, "FullName").ifEmpty {
                 parseXmlTag(plmnXml, "ShortName").ifEmpty { "LTE Network" }
             }
+            val rawNumeric = parseXmlTag(plmnXml, "Numeric")
+            val mcc = if (rawNumeric.length >= 3) rawNumeric.substring(0, 3) else "466"
+            val mnc = if (rawNumeric.length > 3) rawNumeric.substring(3) else "89"
 
             val signalXml = makeGetRequest("$baseUrl/api/device/signal")
             val fullCellId = parseXmlTag(signalXml, "cell_id")
             val pci = parseXmlTag(signalXml, "pci")
+            val tac = parseXmlTag(signalXml, "tac").ifEmpty {
+                parseXmlTag(signalXml, "TAC").ifEmpty { "-" }
+            }
 
             var eNodeB = "-"
             var cellDisplay = "-"
@@ -380,7 +409,11 @@ class HuaweiRouterApi {
                     cellId = cellDisplay,
                     eNodeBId = eNodeB,
                     wanIp = wanIp.ifEmpty { "-" },
-                    usedData = usedDataFormatted
+                    usedData = usedDataFormatted,
+                    tac = tac,
+                    plmn = rawNumeric.ifEmpty { "$mcc$mnc" },
+                    mcc = mcc,
+                    mnc = mnc
                 )
             )
         } catch (e: Exception) {
@@ -508,7 +541,7 @@ class HuaweiRouterApi {
     }
 
     private fun parseXmlTag(xml: String, tag: String): String {
-        val pattern = "<$tag>(.*?)</$tag>".toRegex(RegexOption.DOT_MATCHES_ALL)
+        val pattern = "<$tag>(.*?)</$tag>".toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
         val match = pattern.find(xml)
         return match?.groupValues?.get(1)?.trim() ?: ""
     }
@@ -567,4 +600,286 @@ class HuaweiRouterApi {
         }
         return sb.toString()
     }
+
+    suspend fun rebootRouter(ipAddress: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <Control>1</Control>
+</request>""".trimIndent()
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/device/control")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+            if (body.contains("<response>OK</response>") || response.isSuccessful) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Reboot failed: $body"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSmsCount(ipAddress: String): Result<SmsCount> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xml = makeGetRequest("$baseUrl/api/sms/sms-count")
+            val total = parseXmlTag(xml, "LocalInbox").toIntOrNull() ?: 0
+            val unread = parseXmlTag(xml, "LocalUnread").toIntOrNull() ?: 0
+            Result.success(SmsCount(total = total, unread = unread))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSmsList(ipAddress: String, page: Int = 1, maxCount: Int = 20): Result<List<SmsMessage>> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <PageIndex>$page</PageIndex>
+    <ReadCount>$maxCount</ReadCount>
+    <BoxType>1</BoxType>
+    <SortType>0</SortType>
+    <Ascending>0</Ascending>
+    <UnreadPreferred>0</UnreadPreferred>
+</request>""".trimIndent()
+
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/sms/sms-list")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+            Log.d(TAG, "sms-list response (code=${response.code}): $body")
+
+            val messages = mutableListOf<SmsMessage>()
+            val msgPattern = "<message>(.*?)</message>".toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+            val matches = msgPattern.findAll(body)
+            for (match in matches) {
+                val block = match.groupValues[1]
+                val index = parseXmlTag(block, "Index").toLongOrNull()
+                    ?: parseXmlTag(block, "index").toLongOrNull() ?: 0L
+                val phone = parseXmlTag(block, "Phone").ifEmpty { parseXmlTag(block, "phone") }
+                val rawContent = parseXmlTag(block, "Content").ifEmpty { parseXmlTag(block, "content") }
+                val content = try {
+                    android.text.Html.fromHtml(rawContent, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                } catch (e: Exception) {
+                    rawContent
+                }
+                val date = parseXmlTag(block, "Date").ifEmpty { parseXmlTag(block, "date") }
+                val smstat = parseXmlTag(block, "smstat").ifEmpty {
+                    parseXmlTag(block, "Smstype").ifEmpty {
+                        parseXmlTag(block, "SmsType")
+                    }
+                }
+                messages.add(
+                    SmsMessage(
+                        index = index,
+                        phone = phone,
+                        content = content,
+                        date = date,
+                        isUnread = smstat == "0"
+                    )
+                )
+            }
+            Result.success(messages)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendSms(ipAddress: String, phone: String, content: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <Index>-1</Index>
+    <Phones>
+        <Phone>$phone</Phone>
+    </Phones>
+    <Sca></Sca>
+    <Content>$content</Content>
+    <Length>-1</Length>
+    <Reserved>1</Reserved>
+    <Date>-1</Date>
+</request>""".trimIndent()
+
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/sms/send-sms")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+            if (body.contains("<response>OK</response>")) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Send SMS failed: ${parseXmlTag(body, "code")}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteSms(ipAddress: String, index: Long): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <Index>$index</Index>
+</request>""".trimIndent()
+
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/sms/delete-sms")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+            if (body.contains("<response>OK</response>")) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Delete SMS failed: ${parseXmlTag(body, "code")}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAntennaType(ipAddress: String): Result<AntennaStatus> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xml = makeGetRequest("$baseUrl/api/device/antenna_type")
+            Log.d(TAG, "antenna_type response: $xml")
+
+            if (xml.isEmpty() || xml.contains("<error>")) {
+                val errCode = parseXmlTag(xml, "code")
+                return@withContext Result.failure(Exception("Failed to get antenna type: code $errCode"))
+            }
+
+            val rawType = parseXmlTag(xml, "antennatype").toIntOrNull()
+                ?: parseXmlTag(xml, "antennasettype").toIntOrNull()
+            val antenna1Val = parseXmlTag(xml, "antenna1type").toIntOrNull()
+            val antenna2Val = parseXmlTag(xml, "antenna2type").toIntOrNull()
+
+            val mode = if (rawType != null) {
+                AntennaMode.fromValue(rawType)
+            } else if (antenna1Val != null && antenna2Val != null) {
+                when {
+                    antenna1Val == 0 && antenna2Val == 0 -> AntennaMode.AUTO
+                    antenna1Val == 1 && antenna2Val == 1 -> AntennaMode.INTERNAL
+                    antenna1Val == 2 && antenna2Val == 2 -> AntennaMode.EXTERNAL
+                    antenna1Val != antenna2Val -> AntennaMode.MIXED
+                    else -> AntennaMode.fromValue(antenna1Val)
+                }
+            } else {
+                AntennaMode.AUTO
+            }
+
+            Result.success(
+                AntennaStatus(
+                    mode = mode,
+                    antenna1Type = antenna1Val,
+                    antenna2Type = antenna2Val,
+                    rawXml = xml
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "getAntennaType error", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setAntennaType(ipAddress: String, mode: AntennaMode): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <antennasettype>${mode.value}</antennasettype>
+</request>""".trimIndent()
+
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/device/antenna_set_type")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+            Log.d(TAG, "antenna_set_type response: $body")
+
+            if (body.contains("<response>OK</response>")) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Failed to set antenna type: ${parseXmlTag(body, "code")}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "setAntennaType error", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getHostList(ipAddress: String): Result<List<ConnectedDevice>> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+            val xml = makeGetRequest("$baseUrl/api/wlan/host-list")
+            Log.d(TAG, "host-list response: $xml")
+
+            val devices = mutableListOf<ConnectedDevice>()
+            val hostPattern = "<Host>(.*?)</Host>".toRegex(setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+            val matches = hostPattern.findAll(xml)
+
+            for (match in matches) {
+                val block = match.groupValues[1]
+                val hostName = parseXmlTag(block, "HostName").ifEmpty {
+                    parseXmlTag(block, "hostname").ifEmpty { "Unknown Device" }
+                }
+                val ip = parseXmlTag(block, "IpAddress").ifEmpty {
+                    parseXmlTag(block, "ipaddress")
+                }
+                val mac = parseXmlTag(block, "MacAddress").ifEmpty {
+                    parseXmlTag(block, "macaddress")
+                }
+                val associateTime = parseXmlTag(block, "AssociatedTime").toLongOrNull()
+                    ?: parseXmlTag(block, "AssociateTime").toLongOrNull()
+                    ?: parseXmlTag(block, "associatedtime").toLongOrNull()
+                    ?: parseXmlTag(block, "associatetime").toLongOrNull() ?: 0L
+
+                devices.add(
+                    ConnectedDevice(
+                        hostName = hostName,
+                        ipAddress = ip,
+                        macAddress = mac,
+                        associateTime = associateTime
+                    )
+                )
+            }
+            Result.success(devices)
+        } catch (e: Exception) {
+            Log.e(TAG, "getHostList error", e)
+            Result.failure(e)
+        }
+    }
 }
+

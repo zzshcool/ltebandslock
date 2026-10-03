@@ -252,7 +252,7 @@ fun BandLockDialog(
                     Text(
                         text = "APPLY BANDS LOCK",
                         fontWeight = FontWeight.Bold,
-                        color = Slate900,
+                        color = androidx.compose.ui.graphics.Color.White,
                         fontSize = 14.sp
                     )
                 }

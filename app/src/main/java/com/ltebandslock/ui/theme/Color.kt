@@ -2,27 +2,35 @@ package com.ltebandslock.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Professional Telecom Console Dark Palette
-val AppBgDark = Color(0xFF0C1017)      // Deep graphite black
-val CardBgDark = Color(0xFF141B26)     // Slate surface
-val CardBgSubtle = Color(0xFF101620)   // Sub-item surface
-val CardBorderDark = Color(0xFF222E40) // Crisp outline
+// Nintendo Switch UI Palette
+val NintendoRed = Color(0xFFE60012)        // Official Nintendo Red
+val JoyConBlue = Color(0xFF00B5E2)         // Joy-Con Neon Blue
+val JoyConRed = Color(0xFFFF3C28)          // Joy-Con Neon Red
+val JoyConYellow = Color(0xFFFFD700)       // Joy-Con Neon Yellow
 
-val Slate900 = Color(0xFF0C1017)
-val Slate800 = Color(0xFF192231)
-val Slate700 = Color(0xFF2C3B52)
-val Slate600 = Color(0xFF4A5D78)
-val Slate400 = Color(0xFF8C9DB5)
-val Slate300 = Color(0xFFB4C4D9)
-val Slate200 = Color(0xFFE2EAF4)
+// Switch System UI Matte Surfaces (Crisp, clean, no AI glow)
+val AppBgDark = Color(0xFF1E2124)          // Switch OS Deep Slate Gray
+val CardBgDark = Color(0xFF282C31)         // Switch Tile Dark Gray
+val CardBgSubtle = Color(0xFF222529)       // Switch Inset Tile Surface
+val CardBorderDark = Color(0xFF383D45)     // Switch Crisp Border
 
-val CyanAccent = Color(0xFF0EA5E9)     // Precise Sky Blue / Cyan
-val CyanGlow = Color(0xFF38BDF8)
-val TealAccent = Color(0xFF14B8A6)
+val Slate900 = Color(0xFF1E2124)
+val Slate800 = Color(0xFF282C31)
+val Slate700 = Color(0xFF383D45)
+val Slate600 = Color(0xFF535965)
+val Slate400 = Color(0xFF9CA3AF)           // Soft Secondary Muted Text
+val Slate300 = Color(0xFFD1D5DB)
+val Slate200 = Color(0xFFF3F4F6)           // High Contrast Pure/Off-White Text
+
+// Accent mappings
+val CyanAccent = NintendoRed               // Primary Action & Highlights: Nintendo Red
+val CyanGlow = JoyConBlue                  // Secondary Action & Metrics: Joy-Con Blue
+val TealAccent = Color(0xFF00C853)         // Mario Green Accent
 
 // Signal Quality Colors
-val SignalExcellent = Color(0xFF10B981) // Emerald Green
-val SignalGood = Color(0xFF3B82F6)      // Cobalt Blue
-val SignalFair = Color(0xFFF59E0B)      // Amber Orange
-val SignalPoor = Color(0xFFEF4444)      // Crimson Red
-val SignalUnknown = Color(0xFF64748B)   // Neutral Muted Gray
+val SignalExcellent = Color(0xFF00C853)    // 1UP Mario Green
+val SignalGood = Color(0xFF00B5E2)         // Joy-Con Blue
+val SignalFair = Color(0xFFFFB300)         // Star Amber Yellow
+val SignalPoor = Color(0xFFE60012)         // Nintendo Red
+val SignalUnknown = Color(0xFF6B7280)      // Neutral Gray
+
