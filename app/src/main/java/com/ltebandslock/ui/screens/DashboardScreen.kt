@@ -34,9 +34,12 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -140,36 +143,36 @@ fun DashboardScreen(viewModel: MainViewModel) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = colors.appBg,
         bottomBar = {
-            // Compact Docked Bottom Action Button
+            // Prominent Bottom Band Lock Button
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(colors.appBg.copy(alpha = 0.95f))
                     .navigationBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Button(
                     onClick = { showBandLockDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(42.dp),
-                    shape = RoundedCornerShape(8.dp),
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = CyanAccent,
                         contentColor = Color.White
                     ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = strings.lockBandsAction,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        fontSize = 15.sp,
                         letterSpacing = 0.5.sp
                     )
                 }
@@ -181,31 +184,30 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Unified Compact Header Bar (Fits on one line)
+            // Top App Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // App Title + 5-Bar Stepped Signal Indicator
+                // Title & Signal Indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = strings.appTitle,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = colors.textPrimary,
-                        letterSpacing = 0.3.sp
+                        letterSpacing = 0.5.sp
                     )
 
-                    // Cellular Signal Bars in Header
                     if (isLoggedIn) {
                         SignalBarsIndicator(
                             bars = signalInfo.signalBars,
@@ -215,54 +217,11 @@ fun DashboardScreen(viewModel: MainViewModel) {
                     }
                 }
 
+                // Action Buttons (Refresh & Settings)
                 Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Active Profile Chip (Clickable to switch router)
-                    val routerLabel = if (deviceInfo.model.isNotEmpty() && deviceInfo.model != "Unknown Router" && deviceInfo.model != "Huawei Router") {
-                        "${deviceInfo.model} (${activeProfile?.ipAddress ?: "-"})"
-                    } else {
-                        "${activeProfile?.name ?: "Router"} (${activeProfile?.ipAddress ?: "-"})"
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.cardBgSubtle)
-                            .border(0.8.dp, colors.cardBorder, RoundedCornerShape(6.dp))
-                            .clickable { showProfileDialog = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isLoggedIn) SignalExcellent else SignalPoor)
-                            )
-                            Text(
-                                text = routerLabel,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Switch Router",
-                                tint = colors.textSecondary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                    }
-
-                    // Refresh Button (Compact 28dp)
                     val infiniteTransition = rememberInfiniteTransition(label = "spin")
                     val spinAngle by infiniteTransition.animateFloat(
                         initialValue = 0f,
@@ -276,49 +235,149 @@ fun DashboardScreen(viewModel: MainViewModel) {
                     IconButton(
                         onClick = { viewModel.login() },
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(colors.cardBgSubtle)
-                            .border(0.8.dp, colors.cardBorder, RoundedCornerShape(6.dp))
+                            .border(1.dp, colors.cardBorder, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = strings.refresh,
                             tint = CyanAccent,
                             modifier = Modifier
-                                .size(15.dp)
+                                .size(20.dp)
                                 .rotate(if (isLoading) spinAngle else 0f)
                         )
                     }
 
-                    // Settings Button (Compact 28dp)
                     IconButton(
                         onClick = { showSettingsDialog = true },
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(colors.cardBgSubtle)
-                            .border(0.8.dp, colors.cardBorder, RoundedCornerShape(6.dp))
+                            .border(1.dp, colors.cardBorder, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = strings.settings,
                             tint = colors.textSecondary,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
 
-            // Quick Tools Bar (Two rows of 3 buttons: Antenna, Advisor, Devices / Cell Map, SMS, Reboot)
+            // Prominent Router Selector Card
+            val modelName = if (deviceInfo.model.isNotEmpty() && deviceInfo.model != "Unknown Router" && deviceInfo.model != "Huawei Router") {
+                deviceInfo.model
+            } else {
+                activeProfile?.name ?: "Huawei Router"
+            }
+            val ipText = activeProfile?.ipAddress ?: "192.168.8.1"
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, colors.cardBorder, RoundedCornerShape(12.dp))
+                    .clickable { showProfileDialog = true },
+                colors = CardDefaults.cardColors(containerColor = colors.cardBgSubtle),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(CyanAccent.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Router,
+                                contentDescription = null,
+                                tint = CyanAccent,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = modelName,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isLoggedIn) SignalExcellent else SignalPoor)
+                                )
+                                Text(
+                                    text = if (isLoggedIn) "已連線 ($ipText)" else "未連線 ($ipText)",
+                                    fontSize = 12.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CyanAccent.copy(alpha = 0.15f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "切換裝置",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyanAccent
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Switch",
+                                tint = CyanAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Quick Tools Bar (2 rows of 3 spacious buttons)
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Row 1: Antenna, Advisor, Devices
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     QuickToolButton(
                         modifier = Modifier.weight(1f),
@@ -349,7 +408,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 // Row 2: Cell Map, SMS, Reboot
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     QuickToolButton(
                         modifier = Modifier.weight(1f),
@@ -377,7 +436,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 }
             }
 
-            // 1. Primary Cellular Signal & CA Metrics Card (with Real-time Trend Sparkline)
+            // 1. Primary Cellular Signal & CA Metrics Card
             SignalMeterCard(
                 signalInfo = signalInfo,
                 signalHistory = signalHistory
@@ -390,14 +449,13 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 speedUnit = appSettings.speedUnit
             )
 
-            // 3. Cell & Network Identity Card (Clickable to open Cell Map)
+            // 3. Cell & Network Identity Card
             DeviceInfoCard(
                 deviceInfo = deviceInfo,
                 onClickMap = { showCellMapDialog = true }
             )
 
-            // Spacer to guarantee clearance
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 
@@ -443,7 +501,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
         )
     }
 
-    // Antenna Alignment & Hardware Mode Dialog
+    // Antenna Alignment Dialog
     if (showAntennaDialog) {
         AntennaAlignmentDialog(
             signalInfo = signalInfo,
@@ -529,32 +587,32 @@ private fun QuickToolButton(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(colors.cardBgSubtle)
             .border(
-                0.8.dp,
+                1.dp,
                 if (hasUnread) SignalPoor else colors.cardBorder,
-                RoundedCornerShape(6.dp)
+                RoundedCornerShape(8.dp)
             )
             .clickable { onClick() }
-            .padding(horizontal = 4.dp, vertical = 5.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Box {
                 Icon(
                     imageVector = icon,
                     contentDescription = title,
                     tint = if (hasUnread) SignalPoor else highlightColor,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 if (hasUnread) {
                     Box(
                         modifier = Modifier
-                            .size(5.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(SignalPoor)
                             .align(Alignment.TopEnd)
@@ -564,8 +622,8 @@ private fun QuickToolButton(
 
             Text(
                 text = title,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
                 color = colors.textPrimary,
                 letterSpacing = 0.2.sp,
                 maxLines = 1
@@ -573,7 +631,7 @@ private fun QuickToolButton(
 
             Text(
                 text = subtitle,
-                fontSize = 8.sp,
+                fontSize = 9.sp,
                 color = if (hasUnread) SignalPoor else colors.textSecondary,
                 maxLines = 1
             )
