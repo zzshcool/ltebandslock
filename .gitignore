@@ -9,3 +9,4 @@
 .idea/
 app/build/
 gradle/wrapper/
+app/release/

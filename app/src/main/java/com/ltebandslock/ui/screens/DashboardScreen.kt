@@ -531,6 +531,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
         ConnectedDevicesDialog(
             devices = connectedDevices,
             onRefresh = { viewModel.loadConnectedDevices() },
+            onBlockDevice = { mac, name -> viewModel.blockConnectedDevice(mac, name) },
             onDismiss = { showDevicesDialog = false }
         )
     }

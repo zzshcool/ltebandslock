@@ -91,31 +91,33 @@ fun SignalMeterCard(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header Row: Section Label + Signal Bars + CA Status & Band
+            // Header Row: Section Label + Compact Bars + Primary Band & CA Badge (No Truncation)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Left: Clean Section Label with Compact Bars
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = strings.cellularRfTitle,
+                        text = "CELLULAR RF",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.textSecondary,
                         letterSpacing = 0.5.sp
                     )
 
-                    // 5-Bar Stepped Cellular Strength Indicator
                     SignalBarsIndicator(
                         bars = signalInfo.signalBars,
-                        showLabel = true
+                        maxBars = 5,
+                        showLabel = false
                     )
                 }
 
+                // Right: Primary Band + Dedicated CA Badge
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -123,10 +125,11 @@ fun SignalMeterCard(
                     if (signalInfo.primaryBand != "-") {
                         val cleanBw = signalInfo.bandwidth.replace(" ", "").replace("/20MHz", "")
                         Text(
-                            text = "${signalInfo.primaryBand} ($cleanBw)",
+                            text = if (cleanBw.isNotEmpty() && cleanBw != "-") "${signalInfo.primaryBand} ($cleanBw)" else signalInfo.primaryBand,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = colors.textPrimary
+                            color = colors.textPrimary,
+                            maxLines = 1
                         )
                     }
 
@@ -134,15 +137,15 @@ fun SignalMeterCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(CyanAccent.copy(alpha = 0.15f))
-                                .border(1.dp, CyanAccent.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                .background(CyanAccent.copy(alpha = 0.2f))
+                                .border(1.dp, CyanAccent.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
                                 .clickable { showCaDialog = true }
-                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = signalInfo.caLabel,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = CyanGlow,
                                 maxLines = 1,
                                 softWrap = false

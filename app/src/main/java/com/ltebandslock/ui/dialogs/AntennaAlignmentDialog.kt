@@ -74,6 +74,7 @@ import com.ltebandslock.ui.theme.CardBorderDark
 import com.ltebandslock.ui.theme.CyanAccent
 import com.ltebandslock.ui.theme.CyanGlow
 import com.ltebandslock.ui.theme.JoyConBlue
+import com.ltebandslock.ui.theme.JoyConYellow
 import com.ltebandslock.ui.theme.NintendoRed
 import com.ltebandslock.ui.theme.SignalExcellent
 import com.ltebandslock.ui.theme.SignalFair
@@ -544,6 +545,9 @@ fun AntennaAlignmentDialog(
                 }
 
                 // Antenna Hardware Mode Selector
+                var selectedMode by remember(antennaStatus.mode) { mutableStateOf(antennaStatus.mode) }
+                var isSwitching by remember { mutableStateOf(false) }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -581,8 +585,8 @@ fun AntennaAlignmentDialog(
                                 )
                             }
                             Text(
-                                text = antennaStatus.mode.title,
-                                color = JoyConBlue,
+                                text = if (isSwitching) "切換指令已下發..." else selectedMode.title,
+                                color = if (isSwitching) JoyConYellow else JoyConBlue,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -596,7 +600,7 @@ fun AntennaAlignmentDialog(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             AntennaMode.entries.forEach { mode ->
-                                val isSelected = antennaStatus.mode == mode
+                                val isSelected = selectedMode == mode
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -607,7 +611,19 @@ fun AntennaAlignmentDialog(
                                             if (isSelected) NintendoRed else CardBorderDark,
                                             RoundedCornerShape(8.dp)
                                         )
-                                        .clickable { onSelectAntennaMode(mode) }
+                                        .clickable {
+                                            if (selectedMode != mode) {
+                                                selectedMode = mode
+                                                isSwitching = true
+                                                // Short haptic click
+                                                try {
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                        vibrator?.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE))
+                                                    }
+                                                } catch (_: Exception) {}
+                                                onSelectAntennaMode(mode)
+                                            }
+                                        }
                                         .padding(vertical = 7.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -629,7 +645,7 @@ fun AntennaAlignmentDialog(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = antennaStatus.mode.description,
+                            text = selectedMode.description,
                             color = Slate400,
                             fontSize = 10.sp,
                             lineHeight = 14.sp

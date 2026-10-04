@@ -257,12 +257,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAntennaMode(mode: AntennaMode) {
         val profile = _activeProfile.value ?: return
+        // Optimistic UI state update: immediate tactile response
+        _antennaStatus.value = _antennaStatus.value.copy(mode = mode)
         viewModelScope.launch {
-            _isLoading.value = true
             val res = api.setAntennaType(profile.ipAddress, mode)
             if (res.isSuccess) {
-                _infoMessage.value = "天線模式已設定為: ${mode.title}"
-                delay(1000)
+                _infoMessage.value = "天線已切換為: ${mode.title}"
                 loadAntennaStatus()
                 val sigRes = api.getSignalInfo(profile.ipAddress)
                 if (sigRes.isSuccess) {
@@ -270,8 +270,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 _errorMessage.value = res.exceptionOrNull()?.localizedMessage ?: "天線設定失敗"
+                // Rollback status on failure
+                loadAntennaStatus()
             }
-            _isLoading.value = false
         }
     }
 
@@ -282,6 +283,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (res.isSuccess) {
                 _connectedDevices.value = res.getOrThrow()
             }
+        }
+    }
+
+    fun blockConnectedDevice(macAddress: String, hostName: String) {
+        val profile = _activeProfile.value ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            val res = api.blockDevice(profile.ipAddress, macAddress, hostName)
+            if (res.isSuccess) {
+                _infoMessage.value = "已將設備 $hostName 踢出下線"
+                _connectedDevices.value = _connectedDevices.value.filter { it.macAddress != macAddress }
+            } else {
+                _errorMessage.value = res.exceptionOrNull()?.localizedMessage ?: "踢出設備失敗"
+            }
+            _isLoading.value = false
         }
     }
 
@@ -296,8 +312,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val candidates = listOf(
                 Pair("全頻聚合 (Auto CA)", LteBands.ALL_BANDS),
-                Pair("B3+B7 雙頻聚合", LteBands.ALL_BANDS.filter { it.bandNumber == 3 || it.bandNumber == 7 }),
+                Pair("4CA 四頻聚合 (B1+B3+B7+B8)", LteBands.ALL_BANDS.filter { it.bandNumber in listOf(1, 3, 7, 8) }),
+                Pair("4CA 四頻聚合 (B1+B3+B7+B28)", LteBands.ALL_BANDS.filter { it.bandNumber in listOf(1, 3, 7, 28) }),
                 Pair("B1+B3+B7 三頻聚合", LteBands.ALL_BANDS.filter { it.bandNumber == 1 || it.bandNumber == 3 || it.bandNumber == 7 }),
+                Pair("B3+B7 雙頻聚合", LteBands.ALL_BANDS.filter { it.bandNumber == 3 || it.bandNumber == 7 }),
                 Pair("單頻 Band 3 (1800M)", LteBands.ALL_BANDS.filter { it.bandNumber == 3 }),
                 Pair("單頻 Band 7 (2600M)", LteBands.ALL_BANDS.filter { it.bandNumber == 7 }),
                 Pair("單頻 Band 1 (2100M)", LteBands.ALL_BANDS.filter { it.bandNumber == 1 }),

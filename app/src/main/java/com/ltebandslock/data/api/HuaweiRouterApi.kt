@@ -286,13 +286,50 @@ class HuaweiRouterApi {
             val netType = parseXmlTag(statusXml, "CurrentNetworkType")
             val isCa = netTypeEx == "1011" || netType == "101" || decodedBands.size > 1
 
-            // Detect CA carrier count from active MCS channels or configured bands
+            // Detect CA carrier count from active MCS channels or configured bands (Cat.11/Cat.19 B818/B618)
             val dlMcs = parseXmlTag(xml, "dl_mcs")
+
+            // Method 1: Count distinct Carrier indexes in dl_mcs (0-based: Carrier0=PCC, Carrier1=SCC1, Carrier2=SCC2, Carrier3=SCC3 -> 4CA)
+            val carrierRegex = "(?i)Carrier([0-9]+)".toRegex()
+            val carrierMatches = carrierRegex.findAll(dlMcs).mapNotNull { it.groupValues[1].toIntOrNull() }.toList()
+            val mcsCarrierCount = if (carrierMatches.isNotEmpty()) {
+                val maxIdx = carrierMatches.maxOrNull() ?: 0
+                maxIdx + 1 // e.g. max index 3 means 4 carriers (0,1,2,3) = 4CA
+            } else if (dlMcs.contains("Carrier4", ignoreCase = true)) {
+                5
+            } else if (dlMcs.contains("Carrier3", ignoreCase = true)) {
+                4
+            } else if (dlMcs.contains("Carrier2", ignoreCase = true)) {
+                3
+            } else if (dlMcs.contains("Carrier1", ignoreCase = true)) {
+                2
+            } else {
+                0
+            }
+
+            // Method 2: Count secondary cell XML blocks (<secondary_cell>, <sec_cell>, <scc>)
+            val secCellCount = listOf(
+                "(?i)<secondary_cell[\\s>]".toRegex().findAll(xml).count(),
+                "(?i)<sec_cell[\\s>]".toRegex().findAll(xml).count(),
+                "(?i)<scc[1-9]_".toRegex().findAll(xml).distinctBy { it.value }.count()
+            ).maxOrNull() ?: 0
+            val sccCarrierCount = if (secCellCount > 0) secCellCount + 1 else 0
+
+            // Method 3: Parse distinct SCC bands in XML (e.g. scc1_band, scc2_band, scc3_band)
+            val sccBands = mutableListOf<String>()
+            for (i in 1..4) {
+                val b = parseXmlTag(xml, "scc${i}_band").ifEmpty {
+                    parseXmlTag(xml, "secondary_cell_band$i")
+                }
+                if (b.isNotEmpty()) sccBands.add("B$b")
+            }
+            val parsedSccCount = if (sccBands.isNotEmpty()) sccBands.size + 1 else 0
+
+            // Determine final caCount
+            val detectedCa = maxOf(mcsCarrierCount, sccCarrierCount, parsedSccCount)
             val caCount = when {
-                dlMcs.contains("Carrier4") -> 4
-                dlMcs.contains("Carrier3") -> 3
-                dlMcs.contains("Carrier2") -> 2
-                isCa && decodedBands.size >= 2 -> decodedBands.size
+                detectedCa in 2..5 -> detectedCa
+                isCa && decodedBands.size in 2..4 -> decodedBands.size
                 isCa -> 2
                 else -> 1
             }
@@ -301,6 +338,8 @@ class HuaweiRouterApi {
 
             val activeBandsStr = if (decodedBands.isNotEmpty()) {
                 decodedBands.joinToString("+")
+            } else if (sccBands.isNotEmpty()) {
+                (listOf(primaryBand) + sccBands).distinct().joinToString("+")
             } else {
                 primaryBand
             }
@@ -786,9 +825,9 @@ class HuaweiRouterApi {
             } else if (antenna1Val != null && antenna2Val != null) {
                 when {
                     antenna1Val == 0 && antenna2Val == 0 -> AntennaMode.AUTO
-                    antenna1Val == 1 && antenna2Val == 1 -> AntennaMode.INTERNAL
-                    antenna1Val == 2 && antenna2Val == 2 -> AntennaMode.EXTERNAL
-                    antenna1Val != antenna2Val -> AntennaMode.MIXED
+                    antenna1Val == 1 && (antenna2Val == 1 || antenna2Val == 0) -> AntennaMode.INTERNAL
+                    antenna1Val == 2 && (antenna2Val == 2 || antenna2Val == 0) -> AntennaMode.EXTERNAL
+                    (antenna1Val == 1 && antenna2Val == 2) || (antenna1Val == 2 && antenna2Val == 1) -> AntennaMode.MIXED
                     else -> AntennaMode.fromValue(antenna1Val)
                 }
             } else {
@@ -812,9 +851,25 @@ class HuaweiRouterApi {
     suspend fun setAntennaType(ipAddress: String, mode: AntennaMode): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             val baseUrl = sanitizeUrl(ipAddress)
+            val a1 = when (mode) {
+                AntennaMode.AUTO -> 0
+                AntennaMode.INTERNAL -> 1
+                AntennaMode.EXTERNAL -> 2
+                AntennaMode.MIXED -> 1
+            }
+            val a2 = when (mode) {
+                AntennaMode.AUTO -> 0
+                AntennaMode.INTERNAL -> 0
+                AntennaMode.EXTERNAL -> 2
+                AntennaMode.MIXED -> 2
+            }
+
+            // Dual compatibility payload: provides both antennasettype and antenna1/2type
             val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
 <request>
     <antennasettype>${mode.value}</antennasettype>
+    <antenna1type>$a1</antenna1type>
+    <antenna2type>$a2</antenna2type>
 </request>""".trimIndent()
 
             val requestBuilder = Request.Builder()
@@ -832,10 +887,85 @@ class HuaweiRouterApi {
             if (body.contains("<response>OK</response>")) {
                 Result.success(true)
             } else {
-                Result.failure(Exception("Failed to set antenna type: ${parseXmlTag(body, "code")}"))
+                // Fallback attempt: single antennasettype tag
+                val fallbackPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <antennasettype>${mode.value}</antennasettype>
+</request>""".trimIndent()
+                val fallbackReq = Request.Builder()
+                    .url("$baseUrl/api/device/antenna_set_type")
+                    .post(fallbackPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+                sessionCookie?.let { fallbackReq.header("Cookie", it) }
+                verificationToken?.let { fallbackReq.header("__RequestVerificationToken", it) }
+                val fallbackResp = client.newCall(fallbackReq.build()).execute()
+                val fallbackBody = fallbackResp.body?.string() ?: ""
+
+                if (fallbackBody.contains("<response>OK</response>")) {
+                    Result.success(true)
+                } else {
+                    Result.failure(Exception("Failed to set antenna type: ${parseXmlTag(body, "code")}"))
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "setAntennaType error", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun blockDevice(ipAddress: String, macAddress: String, hostName: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = sanitizeUrl(ipAddress)
+
+            // Attempt 1: Multi-macfilter blacklist
+            val cleanHostName = hostName.ifEmpty { "Blocked_Device" }
+            val xmlPayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <policy>0</policy>
+    <wifihostnames>
+        <wifihostname>
+            <Hostname>$cleanHostName</Hostname>
+            <MacAddress>$macAddress</MacAddress>
+        </wifihostname>
+    </wifihostnames>
+</request>""".trimIndent()
+
+            val requestBuilder = Request.Builder()
+                .url("$baseUrl/api/wlan/multi-macfilter-settings")
+                .post(xmlPayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+
+            sessionCookie?.let { requestBuilder.header("Cookie", it) }
+            verificationToken?.let { requestBuilder.header("__RequestVerificationToken", it) }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+            response.header("__RequestVerificationToken")?.let { verificationToken = it }
+            val body = response.body?.string() ?: ""
+
+            if (body.contains("<response>OK</response>")) {
+                return@withContext Result.success(true)
+            }
+
+            // Attempt 2: Simple mac-filter
+            val simplePayload = """<?xml version="1.0" encoding="UTF-8"?>
+<request>
+    <filter_mac>$macAddress</filter_mac>
+</request>""".trimIndent()
+
+            val simpleReq = Request.Builder()
+                .url("$baseUrl/api/wlan/mac-filter")
+                .post(simplePayload.toRequestBody("application/xml; charset=utf-8".toMediaType()))
+            sessionCookie?.let { simpleReq.header("Cookie", it) }
+            verificationToken?.let { simpleReq.header("__RequestVerificationToken", it) }
+
+            val simpleResp = client.newCall(simpleReq.build()).execute()
+            val simpleBody = simpleResp.body?.string() ?: ""
+
+            if (simpleBody.contains("<response>OK</response>")) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Router rejected block request: ${parseXmlTag(body, "code")}"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "blockDevice error", e)
             Result.failure(e)
         }
     }
