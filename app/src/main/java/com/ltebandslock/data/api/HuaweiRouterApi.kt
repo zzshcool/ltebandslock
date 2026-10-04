@@ -361,6 +361,21 @@ class HuaweiRouterApi {
             }
             val signalBars = (rawSignalIcon ?: calculatedBars).coerceIn(0, 5)
 
+            val configuredBandsList = if (lteBandHex.isNotEmpty()) {
+                val parsed = LteBands.parseHexMask(lteBandHex)
+                if (parsed.isNotEmpty() && parsed.size < LteBands.ALL_BANDS.size) {
+                    parsed
+                } else if (decodedBands.isNotEmpty()) {
+                    LteBands.fromBandNames(decodedBands)
+                } else {
+                    parsed
+                }
+            } else if (decodedBands.isNotEmpty()) {
+                LteBands.fromBandNames(decodedBands)
+            } else {
+                emptyList()
+            }
+
             Result.success(
                 SignalInfo(
                     rsrp = rsrp,
@@ -369,6 +384,7 @@ class HuaweiRouterApi {
                     rssi = rssi,
                     primaryBand = primaryBand,
                     activeBands = activeBandsStr,
+                    configuredBands = configuredBandsList,
                     bandwidth = bandwidth,
                     aggregation = isCa,
                     caCount = caCount,

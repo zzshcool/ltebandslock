@@ -137,10 +137,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         autoLogin(profile)
     }
 
+    private var isInitialBandsSynced = false
+
     private fun autoLogin(profile: RouterProfile) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
+            isInitialBandsSynced = false
             stopPolling()
 
             val loginResult = api.login(profile)
@@ -168,6 +171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val sig = sigRes.getOrThrow()
             _signalInfo.value = sig
             recordSignalHistory(sig)
+            syncRouterBandsIfInitial(sig)
         }
 
         val trafRes = api.getTrafficInfo(ipAddress)
@@ -178,6 +182,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         loadAntennaStatus()
         loadConnectedDevices()
         updateWidget()
+    }
+
+    private fun syncRouterBandsIfInitial(sig: SignalInfo) {
+        if (!isInitialBandsSynced) {
+            val targetBands = if (sig.configuredBands.isNotEmpty() && sig.configuredBands.size < LteBands.ALL_BANDS.size) {
+                sig.configuredBands
+            } else if (sig.activeBands.isNotEmpty() && sig.activeBands != "-") {
+                LteBands.fromBandNames(sig.activeBands.split("+"))
+            } else if (sig.configuredBands.isNotEmpty()) {
+                sig.configuredBands
+            } else {
+                null
+            }
+            if (targetBands != null && targetBands.isNotEmpty()) {
+                _selectedBands.value = targetBands
+                isInitialBandsSynced = true
+            }
+        }
     }
 
     private fun startPolling(ipAddress: String) {
@@ -192,6 +214,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val sig = sigRes.getOrThrow()
                         _signalInfo.value = sig
                         recordSignalHistory(sig)
+                        syncRouterBandsIfInitial(sig)
                     }
 
                     val trafRes = api.getTrafficInfo(ipAddress)

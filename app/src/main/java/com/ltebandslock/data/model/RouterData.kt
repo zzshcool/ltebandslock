@@ -22,6 +22,7 @@ data class SignalInfo(
     val rssi: Int? = null,           // e.g. -61 dBm
     val primaryBand: String = "-",    // e.g. "B1" or "Band 1"
     val activeBands: String = "-",     // e.g. "B1+B3"
+    val configuredBands: List<LteBandInfo> = emptyList(), // e.g. [B1, B3, B7, B28]
     val bandwidth: String = "-",       // e.g. "20MHz/20MHz"
     val aggregation: Boolean = false,  // Carrier Aggregation (CA)
     val caCount: Int = 1,              // 1 = single, 2 = 2CA, 3 = 3CA, 4 = 4CA

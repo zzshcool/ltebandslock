@@ -483,6 +483,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
         BandLockDialog(
             currentlySelectedBands = selectedBands,
             activeBands = signalInfo.activeBands,
+            configuredBands = signalInfo.configuredBands,
             onDismiss = { showBandLockDialog = false },
             onApplyBands = { newBands ->
                 viewModel.applyBandLock(newBands)

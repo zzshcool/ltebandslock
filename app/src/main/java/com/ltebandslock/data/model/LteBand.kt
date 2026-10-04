@@ -32,22 +32,36 @@ object LteBands {
         if (selectedBands.isEmpty() || selectedBands.size == ALL_BANDS.size) {
             return AUTO_MASK_HEX
         }
-        var mask = 0L
+        var mask = java.math.BigInteger.ZERO
         for (band in selectedBands) {
-            mask = mask or band.bitMask
+            mask = mask.or(java.math.BigInteger.ONE.shiftLeft(band.bandNumber - 1))
         }
         return mask.toString(16).uppercase()
     }
 
     fun parseHexMask(hexString: String): List<LteBandInfo> {
-        if (hexString.equals(AUTO_MASK_HEX, ignoreCase = true) || hexString.isEmpty() || hexString == "0") {
+        val clean = hexString.trim().removePrefix("0x").removePrefix("0X")
+        if (clean.isEmpty() || clean == "0" || clean.equals(AUTO_MASK_HEX, ignoreCase = true)) {
             return ALL_BANDS
         }
         return try {
-            val mask = hexString.toLong(16)
-            ALL_BANDS.filter { (it.bitMask and mask) != 0L }
+            val mask = java.math.BigInteger(clean, 16)
+            val matched = ALL_BANDS.filter { band ->
+                val bit = java.math.BigInteger.ONE.shiftLeft(band.bandNumber - 1)
+                mask.and(bit) != java.math.BigInteger.ZERO
+            }
+            if (matched.isNotEmpty()) matched else ALL_BANDS
         } catch (e: Exception) {
             ALL_BANDS
         }
+    }
+
+    fun fromBandNames(bandNames: Collection<String>): List<LteBandInfo> {
+        val cleanNumbers = bandNames.mapNotNull { name ->
+            val numStr = name.trim().removePrefix("B").removePrefix("b").removePrefix("Band ").removePrefix("BAND ")
+            numStr.toIntOrNull()
+        }.toSet()
+        val matched = ALL_BANDS.filter { cleanNumbers.contains(it.bandNumber) }
+        return if (matched.isNotEmpty()) matched else ALL_BANDS
     }
 }
